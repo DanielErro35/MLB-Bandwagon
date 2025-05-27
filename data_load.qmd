@@ -1,0 +1,922 @@
+---
+title: "Daily Data Load and Clean"
+author: "Daniel Erro"
+format: 
+  html:
+    code-fold: false
+    code-line-numbers: true
+    code-tools: true
+    embed-resources: true
+editor: source
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(here)
+library(gtrendsR)
+library(modelr)
+library(scales)
+library(pscl)
+library(lubridate)
+library(broom)
+```
+
+```{r}
+# Specify the folder where the CSV files are located
+folder_path <- here("daily1")  
+
+# List all CSV files in the folder
+csv_files <- list.files(folder_path, pattern = "*.csv", full.names = TRUE)
+
+# Read all CSV files into a list of data frames
+data_list <- lapply(csv_files, read.csv)
+
+
+folder_path2 <- here("daily2")  
+
+csv_files2 <- list.files(folder_path2, pattern = "*.csv", full.names = TRUE)
+
+data_list2 <- lapply(csv_files2, read.csv)
+```
+
+```{r}
+#| label: daily-data
+
+# Individual pulls from Google trends
+
+df1 <- data_list[[1]]
+df2 <- data_list[[2]]
+df3 <- data_list[[3]]
+df4 <- data_list[[4]]
+df5 <- data_list[[5]]
+df6 <- data_list[[6]]
+df7 <- data_list[[7]]
+df8 <- data_list[[8]]
+df9 <- data_list[[9]]
+df10 <- data_list[[10]]
+df11 <- data_list[[11]]
+df12 <- data_list[[12]]
+df13 <- data_list[[13]]
+df14 <- data_list[[14]]
+df15 <- data_list[[15]]
+df16 <- data_list[[16]]
+df17 <- data_list[[17]]
+df18 <- data_list[[18]]
+df19 <- data_list[[19]]
+df20 <- data_list[[20]]
+df21 <- data_list[[21]]
+df22 <- data_list[[22]]
+df23 <- data_list[[23]]
+df24 <- data_list[[24]]
+df25 <- data_list[[25]]
+df26 <- data_list[[26]]
+df27 <- data_list[[27]]
+df28 <- data_list[[28]]
+df29 <- data_list[[29]]
+df30 <- data_list[[30]]
+df31 <- data_list[[31]]
+df32 <- data_list[[32]]
+df33 <- data_list[[33]]
+df34 <- data_list[[34]]
+df35 <- data_list[[35]]
+df36 <- data_list[[36]]
+df37 <- data_list[[37]]
+df38 <- data_list[[38]]
+df39 <- data_list[[39]]
+df40 <- data_list[[40]]
+df41 <- data_list[[41]]
+df42 <- data_list[[42]]
+df43 <- data_list[[43]]
+df44 <- data_list[[44]]
+df45 <- data_list[[45]]
+df46 <- data_list[[46]]
+df47 <- data_list[[47]]
+df48 <- data_list[[48]]
+df49 <- data_list[[49]]
+df50 <- data_list[[50]]
+df51 <- data_list[[51]]
+df52 <- data_list[[52]]
+df53 <- data_list[[53]]
+df54 <- data_list[[54]]
+df55 <- data_list[[55]]
+df56 <- data_list[[56]]
+df57 <- data_list[[57]]
+df58 <- data_list[[58]]
+df59 <- data_list[[59]]
+df60 <- data_list[[60]]
+df61 <- data_list[[61]]
+df62 <- data_list[[62]]
+df63 <- data_list[[63]]
+df64 <- data_list[[64]]
+df65 <- data_list[[65]]
+
+df66 <- data_list2[[1]]
+df67 <- data_list2[[2]]
+df68 <- data_list2[[3]]
+df69 <- data_list2[[4]]
+df70 <- data_list2[[5]]
+df71 <- data_list2[[6]]
+df72 <- data_list2[[7]]
+df73 <- data_list2[[8]]
+df74 <- data_list2[[9]]
+df75 <- data_list2[[10]]
+df76 <- data_list2[[11]]
+df77 <- data_list2[[12]]
+df78 <- data_list2[[13]]
+df79 <- data_list2[[14]]
+df80 <- data_list2[[15]]
+df81 <- data_list2[[16]]
+df82 <- data_list2[[17]]
+df83 <- data_list2[[18]]
+df84 <- data_list2[[19]]
+df85 <- data_list2[[20]]
+df86 <- data_list2[[21]]
+df87 <- data_list2[[22]]
+df88 <- data_list2[[23]]
+df89 <- data_list2[[24]]
+df90 <- data_list2[[25]]
+df91 <- data_list2[[26]]
+df92 <- data_list2[[27]]
+df93 <- data_list2[[28]]
+df94 <- data_list2[[29]]
+df95 <- data_list2[[30]]
+df96 <- data_list2[[31]]
+df97 <- data_list2[[32]]
+df98 <- data_list2[[33]]
+df99 <- data_list2[[34]]
+df100 <- data_list2[[35]]
+df101 <- data_list2[[36]]
+df102 <- data_list2[[37]]
+df103 <- data_list2[[38]]
+df104 <- data_list2[[39]]
+df105 <- data_list2[[40]]
+df106 <- data_list2[[41]]
+df107 <- data_list2[[42]]
+df108 <- data_list2[[43]]
+df109 <- data_list2[[44]]
+df110 <- data_list2[[45]]
+df111 <- data_list2[[46]]
+df112 <- data_list2[[47]]
+df113 <- data_list2[[48]]
+df114 <- data_list2[[49]]
+df115 <- data_list2[[50]]
+df116 <- data_list2[[51]]
+df117 <- data_list2[[52]]
+df118 <- data_list2[[53]]
+df119 <- data_list2[[54]]
+df120 <- data_list2[[55]]
+df121 <- data_list2[[56]]
+df122 <- data_list2[[57]]
+df123 <- data_list2[[58]]
+df124 <- data_list2[[59]]
+df125 <- data_list2[[60]]
+df126 <- data_list2[[61]]
+```
+
+```{r}
+#| label: joining-data
+
+# Daily Data
+
+# 11/1/17 - 5/30/18 (Astros are reference group)
+df_combined1 <- df1 %>%
+  left_join(df7, by = "Day") %>%
+  left_join(df15, by = "Day") %>%
+  left_join(df21, by = "Day") %>%
+  left_join(df26, by = "Day") %>%
+  left_join(df31, by = "Day") %>%
+  left_join(df37, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States..x, 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States.,
+         Washington.Nationals...United.States.) %>% 
+  rename(Houston.Astros...United.States. = Houston.Astros...United.States..x)
+
+# 6/1/18 - 10/31/18 (Dodgers are reference group)
+df_combined2 <- df2 %>%
+  left_join(df8, by = "Day") %>%
+  left_join(df13, by = "Day") %>%
+  left_join(df20, by = "Day") %>%
+  left_join(df27, by = "Day") %>%
+  left_join(df32, by = "Day") %>%
+  left_join(df38, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States..x, Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Los.Angeles.Dodgers...United.States. = Los.Angeles.Dodgers...United.States..x) 
+
+# 11/1/18 - 5/30/19 (Yankees are reference group)
+df_combined3 <- df3 %>%
+  left_join(df9, by = "Day") %>%
+  left_join(df14, by = "Day") %>%
+  left_join(df19, by = "Day") %>%
+  left_join(df25, by = "Day") %>%
+  left_join(df33, by = "Day") %>%
+  left_join(df39, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States..x, 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(New.York.Yankees...United.States. = New.York.Yankees...United.States..x)
+
+# 6/1/19 - 10/31/19 (Astros are reference group)
+df_combined4 <- df4 %>%
+  left_join(df10, by = "Day") %>%
+  left_join(df16, by = "Day") %>%
+  left_join(df22, by = "Day") %>%
+  left_join(df28, by = "Day") %>%
+  left_join(df34, by = "Day") %>%
+  left_join(df40, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States..x, 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Houston.Astros...United.States. = Houston.Astros...United.States..x)
+
+# Playoff Data
+
+# 2016 Playoffs (Cubs are reference group)
+df_combined5 <- df5 %>%
+  left_join(df12, by = "Day") %>%
+  left_join(df18, by = "Day") %>%
+  left_join(df23, by = "Day") %>%
+  left_join(df29, by = "Day") %>%
+  left_join(df35, by = "Day") %>%
+  left_join(df41, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States..x, 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Chicago.Cubs...United.States. = Chicago.Cubs...United.States..x)
+
+# 2017 Playoffs (Astros are reference group)
+df_combined6 <- df6 %>%
+  left_join(df11, by = "Day") %>%
+  left_join(df17, by = "Day") %>%
+  left_join(df24, by = "Day") %>%
+  left_join(df30, by = "Day") %>%
+  left_join(df36, by = "Day") %>%
+  left_join(df42, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States..x, 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Houston.Astros...United.States. = Houston.Astros...United.States..x)
+
+# 2015 Playoffs (Cubs are reference group)
+df_combined7 <- df43 %>%
+  left_join(df44, by = "Day") %>%
+  left_join(df45, by = "Day") %>%
+  left_join(df46, by = "Day") %>%
+  left_join(df47, by = "Day") %>%
+  left_join(df48, by = "Day") %>%
+  left_join(df49, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States..x, 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Chicago.Cubs...United.States. = Chicago.Cubs...United.States..x)
+
+# 2014 Playoffs (Giants are reference group)
+df_combined8 <- df50 %>%
+  left_join(df51, by = "Day") %>%
+  left_join(df52, by = "Day") %>%
+  left_join(df53, by = "Day") %>%
+  left_join(df54, by = "Day") %>%
+  left_join(df55, by = "Day") %>%
+  left_join(df56, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States..x, 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(San.Francisco.Giants...United.States. = San.Francisco.Giants...United.States..x)
+
+# 2013 Playoffs (Red Sox are reference group)
+df_combined9 <- df57 %>%
+  left_join(df58, by = "Day") %>%
+  left_join(df59, by = "Day") %>%
+  left_join(df60, by = "Day") %>%
+  left_join(df61, by = "Day") %>%
+  left_join(df62, by = "Day") %>%
+  left_join(df63, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States..x, Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., New.York.Yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Boston.Red.Sox...United.States. = Boston.Red.Sox...United.States..x)
+
+# 2012 Playoffs (Giants are reference group)
+df_combined10 <- df64 %>%
+  left_join(df65, by = "Day") %>%
+  left_join(df66, by = "Day") %>%
+  left_join(df67, by = "Day") %>%
+  left_join(df68, by = "Day") %>%
+  left_join(df69, by = "Day") %>%
+  left_join(df70, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States..x, 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(San.Francisco.Giants...United.States. = San.Francisco.Giants...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2011 Playoffs (Cardinals are reference group)
+df_combined11 <- df71 %>%
+  left_join(df72, by = "Day") %>%
+  left_join(df73, by = "Day") %>%
+  left_join(df74, by = "Day") %>%
+  left_join(df75, by = "Day") %>%
+  left_join(df76, by = "Day") %>%
+  left_join(df77, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States..x, 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(St..Louis.Cardinals...United.States. = St..Louis.Cardinals...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2010 Playoffs (Giants are reference group)
+df_combined12 <- df78 %>%
+  left_join(df79, by = "Day") %>%
+  left_join(df80, by = "Day") %>%
+  left_join(df81, by = "Day") %>%
+  left_join(df82, by = "Day") %>%
+  left_join(df83, by = "Day") %>%
+  left_join(df84, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States..x, 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(San.Francisco.Giants...United.States. = San.Francisco.Giants...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2009 Playoffs (Yankees are reference group)
+df_combined13 <- df85 %>%
+  left_join(df86, by = "Day") %>%
+  left_join(df87, by = "Day") %>%
+  left_join(df88, by = "Day") %>%
+  left_join(df89, by = "Day") %>%
+  left_join(df90, by = "Day") %>%
+  left_join(df91, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States..x, 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(yankees...United.States. = yankees...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2008 Playoffs (Red Sox are reference group)
+df_combined14 <- df92 %>%
+  left_join(df93, by = "Day") %>%
+  left_join(df94, by = "Day") %>%
+  left_join(df95, by = "Day") %>%
+  left_join(df96, by = "Day") %>%
+  left_join(df97, by = "Day") %>%
+  left_join(df98, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States..x, Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Boston.Red.Sox...United.States. = Boston.Red.Sox...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2007 Playoffs (Red Sox are reference group)
+df_combined15 <- df99 %>%
+  left_join(df100, by = "Day") %>%
+  left_join(df101, by = "Day") %>%
+  left_join(df102, by = "Day") %>%
+  left_join(df103, by = "Day") %>%
+  left_join(df104, by = "Day") %>%
+  left_join(df105, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States..x, Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Boston.Red.Sox...United.States. = Boston.Red.Sox...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2006 Playoffs (Cardinals are reference group)
+df_combined16 <- df106 %>%
+  left_join(df107, by = "Day") %>%
+  left_join(df108, by = "Day") %>%
+  left_join(df109, by = "Day") %>%
+  left_join(df110, by = "Day") %>%
+  left_join(df111, by = "Day") %>%
+  left_join(df112, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States..x, 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(St..Louis.Cardinals...United.States. = St..Louis.Cardinals...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2005 Playoffs (White Sox are reference group)
+df_combined17 <- df113 %>%
+  left_join(df114, by = "Day") %>%
+  left_join(df115, by = "Day") %>%
+  left_join(df116, by = "Day") %>%
+  left_join(df117, by = "Day") %>%
+  left_join(df118, by = "Day") %>%
+  left_join(df119, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States., Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States..x, Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Chicago.White.Sox...United.States. = Chicago.White.Sox...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+# 2004 Playoffs (Red Sox are reference group)
+df_combined18 <- df120 %>%
+  left_join(df121, by = "Day") %>%
+  left_join(df122, by = "Day") %>%
+  left_join(df123, by = "Day") %>%
+  left_join(df124, by = "Day") %>%
+  left_join(df125, by = "Day") %>%
+  left_join(df126, by = "Day") %>% 
+  select(Day, Arizona.Diamondbacks...United.States., Athletics...United.States., 
+         Atlanta.Braves...United.States., Baltimore.Orioles...United.States., 
+         Boston.Red.Sox...United.States..x, Chicago.Cubs...United.States., 
+         Chicago.White.Sox...United.States., Cincinnati.Reds...United.States., 
+         Cleveland.Guardians...United.States., Colorado.Rockies...United.States., 
+         Detroit.Tigers...United.States., Houston.Astros...United.States., 
+         Kansas.City.Royals...United.States., Los.Angeles.Angels...United.States., 
+         Los.Angeles.Dodgers...United.States., Miami.Marlins...United.States., 
+         Milwaukee.Brewers...United.States., Minnesota.Twins...United.States., 
+         New.York.Mets...United.States., yankees...United.States., 
+         Philadelphia.Phillies...United.States., Pittsburgh.Pirates...United.States., 
+         San.Diego.Padres...United.States., San.Francisco.Giants...United.States., 
+         Seattle.Mariners...United.States., St..Louis.Cardinals...United.States., 
+         Tampa.Bay.Rays...United.States., Texas.Rangers...United.States., 
+         Washington.Nationals...United.States.) %>% 
+  rename(Boston.Red.Sox...United.States. = Boston.Red.Sox...United.States..x) %>% 
+  rename(New.York.Yankees...United.States. = yankees...United.States.)
+
+df_daily <- rbind(df_combined1, df_combined2, df_combined3, df_combined4, 
+                  df_combined5, df_combined6, df_combined7, df_combined8, 
+                  df_combined9, df_combined10, df_combined11, df_combined12,
+                  df_combined13, df_combined14, df_combined15, df_combined16,
+                  df_combined17, df_combined18) %>%
+  mutate_all(~ gsub("<1", "0", .)) %>%
+  mutate_at(vars(-1), as.numeric)
+
+colnames(df_daily) <- gsub("\\...United.States.", "", colnames(df_daily))
+colnames(df_daily) <- gsub("\\.", " ", colnames(df_daily))
+
+colnames(df_daily) <- gsub("St  Louis Cardinals", "St. Louis Cardinals", colnames(df_daily))
+colnames(df_daily) <- gsub("Cleveland Guardians", "Cleveland Indians", colnames(df_daily))
+colnames(df_daily) <- gsub("Athletics", "Oakland Athletics", colnames(df_daily))
+```
+
+```{r}
+#write.csv(df_daily, file = "C:/Users/jille/OneDrive/Desktop/Thesis/MLB-Bandwagon/dailydata/df_daily.csv", row.names = FALSE)
+```
+
+```{r}
+#| label: pivot-longer
+
+df_daily <- df_daily %>%
+  pivot_longer(cols = -Day,  
+               names_to = "team",  
+               values_to = "ghits")
+
+df_daily <- unique(df_daily)
+
+df_daily$Day <- as.Date(df_daily$Day, format = "%m/%d/%Y")
+df_daily$month <- month(df_daily$Day)
+df_daily$year <- year(df_daily$Day)
+```
+
+```{r}
+dat <- read.csv("Season_Data.csv")
+df_daily <- dat %>% 
+  left_join(df_daily, by = c("team", "month", "year")) %>% 
+  filter(!is.na(ghits))
+```
+
+```{r}
+#| label: rescale-ghits
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff04 <- function(x){
+  (x / 100) * 42
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff05 <- function(x){
+  (x / 100) * 15
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff06 <- function(x){
+  (x / 100) * 10
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff07 <- function(x){
+  (x / 100) * 25
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff08 <- function(x){
+  (x / 100) * 14
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff09 <- function(x){
+  (x / 100) * 21
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff10 <- function(x){
+  (x / 100) * 23
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff11 <- function(x){
+  (x / 100) * 16
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff12 <- function(x){
+  (x / 100) * 28
+}
+
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff13 <- function(x){
+  (x / 100) * 35
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff14 <- function(x){
+  (x / 100) * 34
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff15 <- function(x){
+  (x / 100) * 41
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff16 <- function(x){
+  (x / 100) * 100
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff17 <- function(x){
+  (x / 100) * 49
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff18 <- function(x){
+  (x / 100) * 62
+}
+
+# Function to rescale ghits from 2016 Playoffs
+rescale_playoff19 <- function(x){
+  (x / 100) * 79
+}
+```
+
+```{r}
+df_playoff <- df_daily %>%
+  filter(
+    !(Day >= as.Date("2017-11-03") & Day <= as.Date("2018-09-30"))
+    & !(Day >= as.Date("2018-10-30") & Day <= as.Date("2019-09-30"))
+  )
+
+
+# Rescale ghits
+df_playoff <- df_playoff %>%
+  mutate(
+    ghits_rescaled = case_when(
+      (year == 2004) ~ rescale_playoff04(ghits),
+      (year == 2005) ~ rescale_playoff05(ghits),
+      (year == 2006) ~ rescale_playoff06(ghits),
+      (year == 2007) ~ rescale_playoff07(ghits),
+      (year == 2008) ~ rescale_playoff08(ghits),
+      (year == 2009) ~ rescale_playoff09(ghits),
+      (year == 2010) ~ rescale_playoff10(ghits),
+      (year == 2011) ~ rescale_playoff11(ghits),
+      (year == 2012) ~ rescale_playoff12(ghits),
+      (year == 2013) ~ rescale_playoff13(ghits),
+      (year == 2014) ~ rescale_playoff14(ghits),
+      (year == 2015) ~ rescale_playoff15(ghits),
+      (year == 2016) ~ rescale_playoff16(ghits),
+      (year == 2017) ~ rescale_playoff17(ghits),
+      (year == 2018) ~ rescale_playoff18(ghits),
+      (year == 2019) ~ rescale_playoff19(ghits),
+      TRUE ~ ghits
+    )
+  )
+
+# Log rescaled ghits
+df_playoff <- df_playoff %>% 
+  mutate(log_ghits_rescaled = log(ghits_rescaled + 1))
+
+# Define your ordered levels
+playoff_levels <- c("No Playoffs", "Lost WC", "Lost Quarter", "Lost Semi", "Lost WS", "Won WS")
+
+# Convert to ordered factor
+df_playoff$playoffs <- factor(df_playoff$playoffs, levels = playoff_levels, ordered = TRUE)
+
+# Loop through each level and create a column
+for (i in seq_along(playoff_levels)) {
+  level_name <- playoff_levels[i]
+  col_name <- paste0(gsub(" ", "_", level_name))
+  
+  df_playoff[[col_name]] <- as.integer(df_playoff$playoffs >= level_name)
+}
+
+# When eliminated variable
+df_playoff <- df_playoff %>%
+  mutate(
+    eliminated = case_when(
+      playoffs == "No Playoffs"  ~ as.Date(paste0(year, "-09-30")),
+      playoffs == "Lost WC"      ~ as.Date(paste0(year, "-10-03")),
+      playoffs == "Lost Quarter" ~ as.Date(paste0(year, "-10-10")),
+      playoffs == "Lost Semi"    ~ as.Date(paste0(year, "-10-20")),
+      playoffs %in% c("Lost WS", "Won WS") ~ as.Date(paste0(year, "-10-30")),
+      TRUE ~ NA_Date_  # Just in case there's a missing or new category
+    )
+  )
+
+# Add a in WS variable
+df_playoff <- df_playoff %>% 
+  mutate(in_WS = if_else(playoffs %in% c("Lost WS", "Won WS"), 1, 0))
+```
+
+```{r}
+ggplot(df_playoff, aes(x = ghits_rescaled)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(
+    title = "Distribution of Rescaled Google Hits",
+    x = "Rescaled Google Hits",
+    y = "Frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+```{r}
+ggplot(df_playoff, aes(x = log_ghits_rescaled)) +
+  geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black") +
+  labs(
+    title = "Distribution of log(Rescaled Google Hits)",
+    x = "log(Rescaled Google Hits)",
+    y = "Frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+```{r}
+# Quantile normalization
+
+x <- df_playoff$ghits_rescaled
+
+# Quantile-normalize to a standard normal distribution
+normal_scores <- qnorm(rank(x) / (length(x) + 1))
+
+# Plot before and after
+par(mfrow = c(1,2))
+hist(df_playoff$ghits_rescaled, main = "Original (Skewed)", col = "skyblue")
+hist(normal_scores, main = "After Normal Score Transformation", col = "salmon")
+
+df_playoff <- df_playoff %>% 
+  mutate(ghits_norm = normal_scores)
+```
+
+```{r}
+ggplot(df_playoff, aes(x = ghits_norm)) +
+  geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black") +
+  labs(
+    title = "Distribution of Normalized Google Hits",
+    x = "Normalized Google Hits",
+    y = "Frequency"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+```{r}
+#| label: fixing-lag
+
+df_playoff <- df_playoff %>%
+  arrange(team, year, month) %>%  # Sort by team, year, and month
+  group_by(team) %>%  # Group by team
+  mutate(
+    lag30_mlb_searches = lag(mlb_searches, n = 1, order_by = year),  # 1-month lag for mlb_searches
+    lag30_ghits_rescaled = lag(ghits_norm, n = 1, order_by = year),  # 1-month lag for googlehits
+    lag365_winpct = lag(winpct, n = 1, order_by = year),  # 1-year lag for winpct
+    lag365_is_playoffs = lag(is_playoffs, n = 1, order_by = year),  # 1-year lag for is_playoffs
+    lag365_playoffs = lag(playoffs, n = 1, order_by = year),  # 1-year lag for playoffs
+    lag365_odds = lag(odds, n = 1, order_by = year),  # 1-year lag for odds
+    lag365_attendance = lag(attendance, n = 1, order_by = year)  # 1-year lag for attendance
+  ) %>%
+  ungroup()
+```
