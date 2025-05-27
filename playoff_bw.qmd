@@ -1,0 +1,489 @@
+---
+title: "Playoff Bandwagon"
+author: "Daniel Erro"
+format: 
+  html:
+    code-fold: false
+    code-line-numbers: true
+    code-tools: true
+    embed-resources: true
+editor: source
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(here)
+library(gtrendsR)
+library(modelr)
+library(scales)
+library(pscl)
+library(lubridate)
+library(broom)
+```
+
+# Playoff Model
+
+```{r}
+df_playoff <- read.csv("Playoff_Data.csv")
+df_playoff <- df_playoff %>% 
+  mutate(Day = as.Date(Day), 
+         elimination_date = eliminated)
+```
+
+```{r}
+#| message: false
+
+dat_overall_playoff <- df_playoff %>%
+  group_by(team) %>%
+  summarize(
+    ghits_overall = mean(ghits_norm),
+    propTVMarketSize = propTVMarketSize[1]
+  ) %>%
+  ungroup()
+
+dat_annual_playoff <- df_playoff %>%
+  group_by(team, year) %>%
+  summarize(
+    ghits_annual = mean(ghits_norm),
+    mlb_annual = mean(mlb_searches),
+    propTVMarketSize = propTVMarketSize[1],
+    playoffs = playoffs[1],
+    odds = odds[1],
+    winpct = winpct[1],
+    attendance = attendance[1],
+    payroll = payroll[1]
+  ) %>%
+  ungroup()
+
+dat_annual_playoff <- dat_overall_playoff %>%
+  select(team, ghits_overall) %>%
+  right_join(dat_annual_playoff)
+
+df_playoff <- dat_annual_playoff %>%
+  select(team, year, ghits_annual, mlb_annual, ghits_overall) %>%
+  right_join(df_playoff)
+```
+
+```{r overall playoff model, echo = FALSE}
+# DO WE WANT SUMMARY OUTPUT AND CODE HERE?
+fit_overall_playoff <- lm(ghits_overall ~ propTVMarketSize,
+                      data = dat_overall_playoff)
+
+dat_annual_playoff <- dat_annual_playoff %>%
+  add_predictions(
+    fit_overall_playoff,
+    var = "pred_overall"
+  ) %>%
+  mutate(
+    resid_annual = ghits_annual - pred_overall
+  )
+```
+
+```{r annual playoff model, echo = FALSE}
+
+# Fixing an issue where "Won WS" was not recognized because it was the last row and we are lagging on playoff
+dat_annual_playoff <- dat_annual_playoff[rev(rownames(dat_annual_playoff)), ]
+
+# DO WE WANT SUMMARY OUTPUT AND CODE HERE?
+fit_annual_playoff <- lm(resid_annual ~ mlb_annual + 
+                   lag(ghits_annual) + 
+                   factor(lag(playoffs)) + lag(winpct) + lag(attendance) +
+                   odds + payroll,
+                      data = dat_annual_playoff) 
+
+df_playoff <- df_playoff %>%
+  add_predictions(
+    fit_overall_playoff,
+    var = "pred_overall"
+  ) %>%
+  add_predictions(
+    fit_annual_playoff,
+    var = "pred_resid_annual"
+  ) %>%
+  mutate(
+    pred_annual = pred_overall + pred_resid_annual,
+    resid = ghits_norm - pred_annual
+  )
+```
+
+## Model Build
+
+```{r}
+df_playoff <- df_playoff |>
+  mutate(
+    start_playoffs = make_date(year = year, month = 10, day = 1),
+    day_of_playoffs = interval(start_playoffs, Day)/days(1),
+    eliminated = Day > elimination_date
+  )
+```
+
+```{r}
+#| label: daily-playoff-model-1
+
+fit_daily_playoff1 <- lm(resid ~ lag(ghits_norm)*in_WS,
+                      data = df_playoff) 
+
+AIC(fit_daily_playoff1)
+```
+
+```{r}
+#| label: daily-playoff-model-2
+
+fit_daily_playoff2 <- lm(resid ~ lag(ghits_norm) +
+                           winpct + day_of_playoffs*(Lost_WC + Lost_Quarter + 
+                                       Lost_Semi + in_WS) + eliminated,
+                      data = df_playoff) 
+
+AIC(fit_daily_playoff2)
+```
+
+```{r}
+plot(fit_daily_playoff2)
+```
+
+
+## Predictions from best model
+
+```{r}
+#| label: adding-preds-playoff
+
+df_playoff <- df_playoff %>%
+  add_predictions(
+    fit_daily_playoff2,
+    var = "pred_resid"
+  ) %>%
+  mutate(
+    pred = pred_overall + pred_resid_annual + pred_resid,
+    resid_final = ghits_norm - pred
+  )
+
+df_playoff <- df_playoff %>%
+  mutate(team = if_else(team == "Cleveland Indians", "Cleveland Guardians", team))
+```
+
+```{r}
+# moving average to smooth out ghits and predictions
+df_playoff <- df_playoff %>% 
+  mutate(
+    ghits_moving_avg = slider::slide(ghits_norm, mean, .before = 3, .after = 3) |>unlist(),
+    preds_moving_avg = slider::slide(pred, mean, .before = 3, .after = 3) |>unlist()
+  )
+```
+
+```{r}
+plot_playoffs <- function(team_name, start_year, end_year) {
+  df_plot <- df_playoff %>%
+    filter(team == team_name,
+           year >= start_year, year <= end_year,
+           month(Day) %in% 9:11) %>%
+    mutate(
+      Day = as.Date(Day),  # ensure Day is a Date
+      month_day = format(Day, "%m-%d")
+    )
+
+  df_elim <- df_plot %>%
+    distinct(year, elimination_date) %>%
+    mutate(
+      elimination_date = as.Date(elimination_date),  # ensure it's a Date
+      elim_day = format(elimination_date, "%m-%d"),
+      elim_day = as.Date(elim_day, format = "%m-%d")
+    )
+
+  ggplot(df_plot) +
+    geom_line(aes(x = as.Date(month_day, format = "%m-%d"), y = ghits_moving_avg), color = "dodgerblue") +
+    geom_line(aes(x = as.Date(month_day, format = "%m-%d"), y = preds_moving_avg), color = "black") +
+    geom_vline(data = df_elim,
+               aes(xintercept = elim_day),
+               linetype = "dashed",
+               color = "red") +
+    facet_wrap(~ year, scales = "free_y") +
+    scale_x_date(
+      date_breaks = "1 week",
+      date_labels = "%b %d",
+      limits = as.Date(c("09-25", "11-05"), format = "%m-%d")
+    ) +
+    theme_minimal() +
+    labs(
+      title = paste0("Pred. (Black) vs. Actual (Blue) Postseason GHits - ", team_name, " (", start_year, "-", end_year, ")"),
+      x = "Date",
+      y = "Google Hits (7-day MA)")
+}
+```
+
+```{r, warning=FALSE}
+plot_playoffs("Los Angeles Dodgers", 2004, 2019)
+```
+
+```{r}
+plot_raw_playoffs <- function(team_name, start_year, end_year) {
+  df_plot <- df_playoff %>%
+    filter(team == team_name,
+           year >= start_year, year <= end_year,
+           month(Day) %in% 9:11) %>%
+    mutate(
+      Day = as.Date(Day),  # ensure Day is a Date
+      month_day = format(Day, "%m-%d")
+    )
+
+  df_elim <- df_plot %>%
+    distinct(year, elimination_date) %>%
+    mutate(
+      elimination_date = as.Date(elimination_date),  # ensure it's a Date
+      elim_day = format(elimination_date, "%m-%d"),
+      elim_day = as.Date(elim_day, format = "%m-%d")
+    )
+
+  ggplot(df_plot) +
+    geom_line(aes(x = as.Date(month_day, format = "%m-%d"), y = ghits_norm), color = "dodgerblue") +
+    geom_line(aes(x = as.Date(month_day, format = "%m-%d"), y = pred), color = "black") +
+    geom_vline(data = df_elim,
+               aes(xintercept = elim_day),
+               linetype = "dashed",
+               color = "red") +
+    facet_wrap(~ year, scales = "free_y") +
+    scale_x_date(
+      date_breaks = "1 week",
+      date_labels = "%b %d",
+      limits = as.Date(c("09-25", "11-05"), format = "%m-%d")
+    ) +
+    theme_minimal() +
+    labs(
+      title = paste0("Pred. (Black) vs. Actual (Blue) Postseason GHits - ", team_name, " (", start_year, "-", end_year, ")"),
+      x = "Date",
+      y = "Google Hits")
+}
+```
+
+```{r, warning=FALSE}
+plot_raw_playoffs("Los Angeles Dodgers", 2004, 2019)
+```
+
+```{r}
+plot_playoff_trends <- function(team_name, start_year, end_year) {
+  df_plot <- df_playoff %>%
+    filter(team == team_name,
+           year >= start_year, year <= end_year,
+           month(Day) %in% 9:11) %>%
+    mutate(
+      Day = as.Date(Day),  # ensure Day is a Date
+      month_day = format(Day, "%m-%d")
+    )
+
+  df_elim <- df_plot %>%
+    distinct(year, elimination_date) %>%
+    mutate(
+      elimination_date = as.Date(elimination_date),  # ensure it's a Date
+      elim_day = format(elimination_date, "%m-%d"),
+      elim_day = as.Date(elim_day, format = "%m-%d")
+    )
+
+  ggplot(df_plot) +
+    geom_line(aes(x = as.Date(month_day, format = "%m-%d"), y = ghits_norm), color = "dodgerblue") +
+    #geom_line(aes(x = as.Date(month_day, format = "%m-%d"), y = preds_moving_avg), color = "black") +
+    geom_vline(data = df_elim,
+               aes(xintercept = elim_day),
+               linetype = "dashed",
+               color = "red") +
+    facet_wrap(~ year, scales = "free_y") +
+    scale_x_date(
+      date_breaks = "1 week",
+      date_labels = "%b %d",
+      limits = as.Date(c("09-25", "11-05"), format = "%m-%d")
+    ) +
+    theme_minimal() +
+    labs(
+      title = paste0("Postseason Google Hits - ", team_name, " (", start_year, "-", end_year, ")"),
+      x = "Date",
+      y = "Google Hits")
+}
+```
+
+```{r}
+plot_playoff_trends("Los Angeles Dodgers", 2004, 2019)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+df_playoff %>%
+  filter(month(Day) %in% 9:11) %>%
+  mutate(
+    month_day = format(Day, "%m-%d"),  # Get just month and day
+    month_day_date = as.Date(month_day, format = "%m-%d")  # Convert to date obj for plotting
+  ) %>%
+  ggplot() +
+  aes(x = month_day_date, y = ghits_moving_avg - preds_moving_avg, color = playoffs) +
+  geom_point(alpha = 0.6) +
+  stat_smooth(method = "lm") +
+  facet_wrap(~ year, scales = "free_y") +
+  scale_x_date(
+    limits = as.Date(c("09-20", "11-10"), format = "%m-%d"),
+    date_breaks = "1 week",
+    date_labels = "%b %d"
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Difference Between Actual and Predicted Google Hits (Postseason)",
+    x = "Date",
+    y = "Actual - Predicted Google Hits",
+    color = "Playoff Stage"
+  )
+```
+
+```{r}
+#| label: by-year-team
+
+# Step 1: Prep data — filter to postseason months and calculate residuals
+df_playoff_bw <- df_playoff %>%
+  filter(!playoffs %in% c("No Playoffs", "Won WS", "Lost WS")) %>% 
+  mutate(
+    Day = as.Date(Day),
+    elimination_date = as.Date(elimination_date),
+    bw_resid = ghits_moving_avg - preds_moving_avg,
+    period = if_else(Day <= elimination_date, "Before", "After"),
+    period = factor(period, levels = c("Before", "After"))
+  )
+
+# Step 2: Summarize residuals and run t-tests
+residual_summary_by_year <- df_playoff_bw %>%
+  filter(!is.na(bw_resid)) %>%
+  group_by(team, year) %>%
+  filter(length(unique(period)) == 2) %>%  # Ensure both periods are present
+  nest() %>%
+  mutate(
+    summary_stats = map(data, ~ .x %>%
+                          group_by(period) %>%
+                          summarise(
+                            avg_bw_resid = mean(bw_resid, na.rm = TRUE),
+                            sd_bw_resid = sd(bw_resid, na.rm = TRUE),
+                            n = n(),
+                            .groups = "drop"
+                          ) %>%
+                          pivot_wider(names_from = period, 
+                                      values_from = c(avg_bw_resid, sd_bw_resid, n), 
+                                      names_sep = "_")
+    ),
+    t_test = map(data, ~ t.test(bw_resid ~ period, data = .x)),
+    t_result = map(t_test, tidy)
+  ) %>%
+  unnest(c(summary_stats, t_result)) %>%
+  mutate(
+    diff = avg_bw_resid_Before - avg_bw_resid_After,
+    se_diff = sqrt((sd_bw_resid_Before^2 / n_Before) + (sd_bw_resid_After^2 / n_After)),
+    std_diff = diff / se_diff
+  ) %>%
+  select(team, year,
+         avg_bw_resid_Before, avg_bw_resid_After,
+         sd_bw_resid_Before, sd_bw_resid_After,
+         n_Before, n_After,
+         diff, se_diff, std_diff,
+         statistic, p.value, conf.low, conf.high) %>%
+  arrange(desc(diff)) %>%
+  filter(!is.nan(diff))
+```
+
+```{r}
+#| label: by-team
+
+residual_summary_by_team <- df_playoff_bw %>%
+  filter(!is.na(bw_resid)) %>%
+  group_by(team) %>%
+  filter(length(unique(period)) == 2) %>%  # Ensure both periods exist
+  nest() %>%
+  mutate(
+    summary_stats = map(data, ~ .x %>%
+                          group_by(period) %>%
+                          summarise(
+                            avg_bw_resid = mean(bw_resid, na.rm = TRUE),
+                            n = n(),
+                            .groups = "drop"
+                          ) %>%
+                          pivot_wider(names_from = period, values_from = c(avg_bw_resid, n), names_sep = "_")
+    ),
+    t_test = map(data, ~ t.test(bw_resid ~ period, data = .x)),
+    t_result = map(t_test, tidy)
+  ) %>%
+  unnest(c(summary_stats, t_result)) %>%
+  mutate(diff = avg_bw_resid_Before - avg_bw_resid_After) %>%
+  select(team, avg_bw_resid_Before, avg_bw_resid_After,
+         n_Before, n_After, diff,
+         statistic, p.value, conf.low, conf.high) %>%
+  arrange(desc(diff)) %>%
+  filter(!is.nan(diff))
+```
+
+```{r}
+# Benjamini-Hochberg adjustment (within each team) to control FDR 
+
+residual_summary_by_year <- residual_summary_by_year %>%
+  group_by(team) %>%
+  mutate(p_value_bh = p.adjust(p.value, method = "BH")) %>%
+  ungroup()
+```
+
+
+```{r}
+# Adding a new column to determine the color for the error bars
+residual_summary_by_year <- residual_summary_by_year %>%
+  mutate(
+    error_bar_color = case_when(
+      conf.low <= 0 & conf.high >= 0 ~ "green",  # Non-significant (CI includes 0)
+      diff > 0 ~ "red",                        # Significant positive difference
+      diff < 0 ~ "blue",                       # Significant negative difference
+      TRUE ~ "green"                           # Default (should never hit this, but it's safe to have)
+    )
+  )
+
+# BH adjusted error bar colors
+residual_summary_by_year <- residual_summary_by_year %>%
+  mutate(
+    error_bar_color_bh = case_when(
+      p_value_bh > .05 ~ "green",             # Non-significant
+      diff > 0 & p_value_bh <= .05 ~ "red",   # Significant positive difference
+      diff < 0 & p_value_bh <= .05 ~ "blue",  # Significant negative difference
+      TRUE ~ "green"  
+    )
+  )
+```
+
+```{r}
+plot_team_residual_line <- function(team_name) {
+  residual_summary_by_year %>%
+    filter(team == team_name) %>%
+    ggplot(aes(x = year, y = diff, group = 1)) +
+    #geom_line(color = "black", linewidth = 1) +
+    scale_y_continuous(limits = c(-1, 1)) +
+    scale_x_continuous(breaks = 2004:2019, limits = c(2003.5, 2019.5)) +
+    geom_point(aes(color = error_bar_color), size = 3) +
+    geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = error_bar_color_bh), width = 0.2) +
+    scale_color_manual(
+      values = c("red" = "red", "blue" = "blue", "green" = "green"),
+      breaks = c("blue", "green", "red"),
+      labels = c("Anti-Bandwagon", "Non-Bandwagon", "Bandwagon"),
+      name = "Statistical Significance"
+    ) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    labs(
+      title = paste("Residual Difference Trend for", team_name),
+      subtitle = paste("2004 to 2019"),
+      x = "Year",
+      y = "Residual Difference (Before - After)"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.title = element_text(size = 12),
+      legend.position = "top"
+    )
+}
+```
+
+```{r}
+plot_team_residual_line("Los Angeles Dodgers")
+```

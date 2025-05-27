@@ -1,0 +1,759 @@
+---
+title: "Season Bandwagon"
+author: "Daniel Erro"
+format: 
+  html:
+    code-fold: false
+    code-line-numbers: true
+    code-tools: true
+    embed-resources: true
+editor: source
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+library(gtrendsR)
+library(modelr)
+library(scales)
+library(pscl)
+```
+
+
+## Model-Building (Previous Work)
+
+```{r, include = FALSE}
+dat <- read.csv("Season_Data.csv")
+
+dat_overall <- dat %>%
+  group_by(team) %>%
+  summarize(
+    ghits_overall = mean(googlehits),
+    propTVMarketSize = propTVMarketSize[1]
+  ) %>%
+  ungroup()
+
+dat_annual <- dat %>%
+  group_by(team, year) %>%
+  summarize(
+    ghits_annual = mean(googlehits),
+    mlb_annual = mean(mlb_searches),
+    propTVMarketSize = propTVMarketSize[1],
+    playoffs = playoffs[1],
+    odds = odds[1],
+    winpct = winpct[1],
+    attendance = attendance[1],
+    payroll = payroll[1]
+  ) %>%
+  ungroup()
+
+dat_annual <- dat_overall %>%
+  select(team, ghits_overall) %>%
+  right_join(dat_annual)
+
+
+dat <- dat_annual %>%
+  select(team, year, ghits_annual, mlb_annual, ghits_overall) %>%
+  right_join(dat)
+```
+
+```{r overall model, echo = FALSE}
+fit_overall <- lm(ghits_overall ~ propTVMarketSize,
+                      data = dat_overall)
+
+dat_annual <- dat_annual %>%
+  add_predictions(
+    fit_overall,
+    var = "pred_overall"
+  ) %>%
+  mutate(
+    resid_annual = ghits_annual - pred_overall
+  )
+```
+
+```{r annual model, echo = FALSE}
+fit_annual <- lm(resid_annual ~ mlb_annual + 
+                   lag(ghits_annual) + 
+                   relevel(factor(lag(playoffs)), ref = "No Playoffs") + lag(winpct) + lag(attendance) +
+                   odds + payroll,
+                      data = dat_annual) 
+
+dat <- dat %>%
+  add_predictions(
+    fit_overall,
+    var = "pred_overall"
+  ) %>%
+  add_predictions(
+    fit_annual,
+    var = "pred_resid_annual"
+  ) %>%
+  mutate(
+    pred_annual = pred_overall + pred_resid_annual,
+    resid = googlehits - pred_annual
+  )
+```
+
+
+# Improving Model
+
+```{r}
+#| label: fixing-lag
+
+# Fixing a problem where if the lag is applied on the first observation of a new team
+# it was lagging on the previous team.
+
+dat <- dat %>%
+  arrange(team, year, month) %>%  # Sort by team, year, and month
+  group_by(team) %>%  # Group by team
+  mutate(
+    lag_mlb_searches = lag(mlb_searches),  # 1-month lag for mlb_searches
+    lag_googlehits = lag(googlehits),  # 1-month lag for googlehits
+    lag_winpct = lag(winpct, n = 12),  # 12-month lag for winpct
+    lag_is_playoffs = lag(is_playoffs, n = 12),  # 12-month lag for is_playoffs
+    lag_playoffs = lag(playoffs, n = 12)  # 12-month lag for playoffs
+  ) %>%
+  ungroup()
+```
+
+```{r}
+#| label: monthly-model
+
+fit_monthly <- lm(resid ~ lag_mlb_searches + lag_googlehits + 
+                        phase*attendance + is_playoffs:playoffs,
+                      data = dat) 
+
+AIC(fit_monthly)
+```
+
+```{r}
+#| label: adding-preds
+
+dat <- dat %>%
+  add_predictions(
+    fit_monthly,
+    var = "pred_resid"
+  ) %>%
+  mutate(
+    pred = pred_overall + pred_resid_annual + pred_resid,
+    resid_final = googlehits - pred
+  )
+```
+
+```{r}
+plot(fit_monthly)
+```
+
+
+
+## Fan Fluctuation Plot
+
+```{r, warning=FALSE}
+# Creating a simpler df, and removing 2004 and 2020, since those years 
+# do not have residual values (missing data in 2020, and no lag for 2004)
+fluct_df <- dat %>% 
+  select(c(team, year, playoffs, phase, resid_final)) %>% 
+  filter(year != 2004 & year != 2020) %>% 
+  filter(phase != "Off-Season")
+
+new_fluct_df <- fluct_df %>%
+  group_by(team, year, phase) %>%
+  summarise(
+    resid_final_avg = ifelse(phase == "Season", mean(resid_final), sum(resid_final)), 
+    .groups = "drop"
+  ) %>% 
+  distinct(team, year, phase, .keep_all = TRUE)
+
+# Reordering the df to opening, then season, then playoffs
+new_fluct_df <- new_fluct_df %>%
+  mutate(phase = factor(phase, levels = c("Opening", "Season", "Playoffs"))) %>%
+  arrange(team, year, phase)
+```
+
+```{r, warning=FALSE}
+new_fluct_df %>% 
+  filter(team == "San Francisco Giants") %>% 
+  ggplot(aes(x = factor(year), y = resid_final_avg, fill = phase)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.8) +  
+  scale_x_discrete(expand = expansion(add = c(0.5, 0.5))) +
+  theme_minimal() +
+  labs(title = "Residuals by Phase for SF Giants",
+       x = "Year",
+       y = "Residuals") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing = unit(1, "lines")) +  
+  scale_fill_manual(values = c("Opening" = "blue", "Season" = "green", "Playoffs" = "red"))
+```
+
+```{r, warning=FALSE}
+by_phase_df <- new_fluct_df %>% 
+  group_by(team, phase) %>% 
+  summarise(avg_resid = mean(resid_final_avg, na.rm = TRUE), .groups = "drop")
+
+ggplot(by_phase_df, aes(x = team, y = avg_resid, fill = phase)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(x = "Team", y = "Average Residual", title = "Average Residual by Team and Phase") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  
+  scale_fill_manual(values = c("Opening" = "blue", "Season" = "green", "Playoffs" = "red"))
+```
+
+```{r, warning=FALSE}
+dat %>%
+  filter(team %in% c("Los Angeles Dodgers", "San Francisco Giants")) %>%
+  filter(year >= 2004 & year <= 2019) %>% 
+  ggplot() +
+  geom_line(aes(x = as.Date(date), y = googlehits, color = team)) +
+  scale_color_manual(values = c("Los Angeles Dodgers" = "dodgerblue3", 
+                                "San Francisco Giants" = "orange")) +
+  theme_minimal() +
+  labs(title = "Monthly Google Hits for Dodgers and Giants (2004–2019)",
+       x = "Year",
+       y = "Google Hits") + 
+  theme(
+    legend.position = "none",
+    panel.grid.major.x = element_line(colour = "gray92"),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.border = element_rect(colour = "gray80", fill = NA)
+  )
+```
+
+## Fluctuation Based on Previous Performance
+
+```{r}
+#| label: define-success
+
+dat_performance <- dat %>% 
+  filter(phase != "Off-Season") %>% 
+  mutate(performance = case_when(
+    
+    # When phase is "Opening", success is defined
+    # by preseason odds
+    phase == "Opening" ~ case_when(
+      odds <= 1500 ~ "really good",
+      odds > 1500 & odds < 3000 ~ "good",
+      odds >= 3000 & odds <= 4500 ~ "bad",
+      TRUE ~ "really bad"
+    ),
+    
+    # When phase is "Season", success is defined
+    # by win percentage
+    phase == "Season" ~ case_when(
+      winpct >= .5925 ~ "really good",
+      winpct >= .5307 & winpct < .5925 ~ "good",
+      winpct >= .46905 & winpct < .5307 ~ "bad",
+      TRUE ~ "really bad"
+    ),
+    
+    # When phase is "Playoffs", success is defined
+    # by whether team is in playoffs
+    phase == "Playoffs" ~ case_when(
+      playoffs == "Won WS" | playoffs == " Lost WS" ~ "really good",
+      playoffs == "Lost Semi" ~ "good",
+      playoffs == "Lost Quarter" ~ "bad",
+      playoffs == "No Playoffs" ~ "really bad",
+      TRUE ~ "good"
+    ),
+    
+    TRUE ~ "a"
+  ))
+```
+
+```{r}
+# Merging performance data with the new_fluct_df to add the performance column
+fluct_perf_df <- new_fluct_df %>%
+  left_join(dat_performance %>% select(team, year, phase, performance), by = c("team", "year", "phase")) %>% 
+  distinct()
+
+# Create a new column to store the performance of the previous phase
+fluct_perf_lag_df <- fluct_perf_df %>%
+  arrange(team, year, phase) %>%  
+  group_by(team) %>%  
+  mutate(
+    prev_performance = lag(performance)  
+  ) %>%
+  ungroup()
+
+# Reordering the df to opening, then season, then playoffs
+fluct_perf_lag_df <- fluct_perf_lag_df %>%
+  mutate(phase = factor(phase, levels = c("Opening", "Season", "Playoffs"))) %>%
+  arrange(team, year, phase) %>% 
+  mutate(obs_number = row_number())
+
+```
+
+```{r, warning=FALSE}
+fluct_perf_lag_df %>% 
+  filter(team == "San Francisco Giants") %>% 
+  ggplot(aes(x = obs_number, y = resid_final_avg, fill = prev_performance)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.8) +  
+  scale_x_discrete(expand = expansion(add = c(0.5, 0.5))) +
+  theme_minimal() +
+  labs(title = "Residuals by Phase for SF Giants",
+       x = "Year",
+       y = "Residuals") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing = unit(1, "lines")) +  
+  scale_fill_manual(values = c(
+    "good" = "green", 
+    "really good" = "green", 
+    "bad" = "red", 
+    "really bad" = "red", 
+    "NA" = "gray"  # gray for NA values
+  )) +
+  # Add vertical dashed lines after every 3 observations
+  geom_vline(xintercept = seq(3.5, max(fluct_perf_lag_df$obs_number), by = 3), 
+             linetype = "dashed", color = "black", size = 0.5)  
+```
+
+```{r}
+scatter_df <- new_fluct_df %>%
+  left_join(dat_performance %>% select(team, year, phase, odds, winpct, playoffs), by = c("team", "year", "phase")) %>% 
+  distinct()
+
+norm_opening_df <- scatter_df %>%
+  filter(phase == "Opening") %>%  
+  group_by(year) %>%           
+  mutate(odds_norm = 1 - rescale(log(odds))) %>% 
+  ungroup()
+
+norm_season_df <- scatter_df %>%
+  filter(phase == "Season") %>%  
+  group_by(year) %>%           
+  mutate(winpct_norm = rescale(winpct)) %>% 
+  ungroup() 
+
+norm_playoffs_df <- scatter_df %>%
+  filter(phase == "Playoffs") %>%
+  mutate(
+    playoffs_norm = case_when(
+      playoffs == "Won WS" ~ 4,
+      playoffs == "Lost WS" ~ 3,
+      playoffs == "Lost Semi" ~ 2,
+      playoffs == "Lost Quarter" ~ 1,
+      playoffs == "No Playoffs" ~ 0,
+      TRUE ~ NA_real_
+    )
+  )
+
+norm_df <- bind_rows(norm_opening_df, norm_season_df, norm_playoffs_df)
+
+norm_df <- norm_df %>%
+  mutate(norm_perform = coalesce(odds_norm, winpct_norm, playoffs_norm))
+
+norm_df <- norm_df %>%
+  mutate(team = if_else(team == "Cleveland Indians", "Cleveland Guardians", team))
+```
+
+```{r, warning=FALSE, message=FALSE}
+#| label: all-opening
+
+norm_df %>%
+  filter(phase == "Opening") %>% 
+  ggplot(aes(x = norm_perform, y = resid_final_avg)) +
+  geom_point(aes(color = phase), size = 3) +
+  scale_color_manual(values = c("Opening" = "blue", "Season" = "green", "Playoffs" = "red")) +
+  labs(title = "All Teams Opening (April 2005-2019)",
+       x = "Normalized Preseason Odds",
+       y = "Residuals") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 0.5)
+```
+
+```{r}
+giants_opening_data <- norm_df %>% 
+  filter(team == "San Francisco Giants") %>% 
+  filter(phase == "Opening")
+
+lm_giants_opening <- lm(resid_final_avg ~ norm_perform, data = giants_opening_data)
+
+summary(lm_giants_opening)
+```
+
+```{r, warning=FALSE, message=FALSE}
+#| label: all-season
+
+norm_df %>%
+  filter(phase == "Season") %>% 
+  ggplot(aes(x = norm_perform, y = resid_final_avg)) +
+  geom_point(aes(color = phase), size = 3) +
+  scale_color_manual(values = c("Opening" = "blue", "Season" = "dodgerblue", "Playoffs" = "red")) +
+  labs(title = "All MLB Teams (2005-2019)",
+       x = "Normalized Performance",
+       y = "Residuals") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 0.5)
+```
+
+```{r}
+dodgers_season_data <- norm_df %>% 
+  filter(team == "Los Angeles Dodgers") %>% 
+  filter(phase == "Season")
+
+lm_dodgers_season <- lm(resid_final_avg ~ norm_perform, data = dodgers_season_data)
+
+summary(lm_dodgers_season)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+#| label: all-opening-season
+
+norm_df %>%
+  filter(phase == "Opening" | phase == "Season") %>% 
+  ggplot(aes(x = norm_perform, y = resid_final_avg)) +
+  geom_point(aes(color = phase), size = 3) + 
+  scale_color_manual(values = c("Opening" = "blue", "Season" = "green", "Playoffs" = "red")) +
+  labs(title = "All Team Opening and Season (2005-2019)",
+       x = "Normalized Performance",
+       y = "Residuals") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 0.5)
+```
+
+A negative number indicates that as team performance increases, residuals tend to decrease. This means non-bandwagoning??
+
+A positive number would mean as team performance increases, residuals tend to increase, so bandwagoning?
+
+## Automation
+
+```{r, warning=FALSE}
+# Fit a model for each team and phase
+fit_models_for_team <- function(team_data) {
+  # Filter data for the different phases and remove NA values
+  opening_data <- team_data %>%
+    filter(phase == "Opening" & !is.na(resid_final_avg) & !is.na(norm_perform))
+  
+  season_data <- team_data %>%
+    filter(phase == "Season" & !is.na(resid_final_avg) & !is.na(norm_perform))
+  
+  combined_data <- team_data %>%
+    filter(phase %in% c("Opening", "Season") & !is.na(resid_final_avg) & !is.na(norm_perform))
+  
+  # Initialize a list to store models
+  models <- list()
+  
+  # Fit models if data exists
+  if (nrow(opening_data) > 0) {
+    models$lm_opening <- lm(resid_final_avg ~ norm_perform, data = opening_data)
+  } else {
+    models$lm_opening <- NA
+  }
+  
+  if (nrow(season_data) > 0) {
+    models$lm_season <- lm(resid_final_avg ~ norm_perform, data = season_data)
+  } else {
+    models$lm_season <- NA
+  }
+  
+  if (nrow(combined_data) > 0) {
+    models$lm_combined <- lm(resid_final_avg ~ norm_perform, data = combined_data)
+  } else {
+    models$lm_combined <- NA
+  }
+  
+  # Return the models as a tibble
+  tibble(
+    team = unique(team_data$team),
+    lm_opening = list(models$lm_opening),
+    lm_season = list(models$lm_season),
+    lm_combined = list(models$lm_combined)
+  )
+}
+
+# Nest data by team, then apply the model fitting function to each team
+team_models <- norm_df %>%
+  group_by(team) %>%
+  nest() %>%
+  mutate(models = map(data, fit_models_for_team)) %>%
+  select(team, models) %>%
+  unnest(cols = models)
+```
+
+```{r}
+#| label: opening-phase-regression
+
+# Create an empty tibble to store the results
+opening_coefficients_df <- tibble()
+
+# Loop through each team model
+for (i in seq_along(team_models$lm_opening)) {
+  # Access the model
+  model <- team_models$lm_opening[[i]]
+  
+  # Get the summary of the model
+  model_summary <- summary(model)
+  
+  # Extract coefficients and p-values into a data frame
+  coeffs <- data.frame(
+    term = rownames(model_summary$coefficients),
+    estimate = model_summary$coefficients[, "Estimate"],
+    std_error = model_summary$coefficients[, "Std. Error"],
+    statistic = model_summary$coefficients[, "t value"],
+    p_value = model_summary$coefficients[, "Pr(>|t|)"],
+    phase = "Opening"  
+  )
+  
+  # Combine the results into the final df
+  opening_coefficients_df <- bind_rows(opening_coefficients_df, coeffs)
+}
+
+# Making a correct team column
+team_col <- team_models$team
+opening_coefficients_df$team <- rep(team_col, each = 2)
+
+# Filter to slopes only
+opening_coefficients_df <- opening_coefficients_df %>% 
+  filter(term == "norm_perform")
+```
+
+```{r}
+#| label: season-phase-regression
+
+# Create an empty tibble to store the results
+season_coefficients_df <- tibble()
+
+# Loop through each team model
+for (i in seq_along(team_models$lm_season)) {
+  # Access the model
+  model <- team_models$lm_season[[i]]
+  
+  # Get the summary of the model
+  model_summary <- summary(model)
+  
+  # Extract coefficients and p-values into a data frame
+  coeffs <- data.frame(
+    term = rownames(model_summary$coefficients),
+    estimate = model_summary$coefficients[, "Estimate"],
+    std_error = model_summary$coefficients[, "Std. Error"],
+    statistic = model_summary$coefficients[, "t value"],
+    p_value = model_summary$coefficients[, "Pr(>|t|)"],
+    phase = "Season"  
+  )
+  
+  # Combine the results into the final dataframe
+  season_coefficients_df <- bind_rows(season_coefficients_df, coeffs)
+}
+
+# Making a correct team column
+season_coefficients_df$team <- rep(team_col, each = 2)
+
+# Filter to slopes only
+season_coefficients_df <- season_coefficients_df %>% 
+  filter(term == "norm_perform")
+```
+
+```{r}
+#| label: opening-season-phase-regression
+
+# Create an empty tibble to store the results
+opening_season_coefficients_df <- tibble()
+
+# Loop through each team model
+for (i in seq_along(team_models$lm_combined)) {
+  # Access the model
+  model <- team_models$lm_combined[[i]]
+  
+  # Get the summary of the model
+  model_summary <- summary(model)
+  
+  # Extract coefficients and p-values into a data frame
+  coeffs <- data.frame(
+    term = rownames(model_summary$coefficients),
+    estimate = model_summary$coefficients[, "Estimate"],
+    std_error = model_summary$coefficients[, "Std. Error"],
+    statistic = model_summary$coefficients[, "t value"],
+    p_value = model_summary$coefficients[, "Pr(>|t|)"],
+    phase = "Opening and Season"  
+  )
+  
+  # Combine the results into the final dataframe
+  opening_season_coefficients_df <- bind_rows(opening_season_coefficients_df, coeffs)
+}
+
+# Making a correct team column
+opening_season_coefficients_df$team <- rep(team_col, each = 2)
+
+# Filter to slopes only
+opening_season_coefficients_df <- opening_season_coefficients_df %>% 
+  filter(term == "norm_perform")
+```
+
+```{r}
+# Benjamini-Hochberg adjustment to control FDR
+
+opening_coefficients_df <- opening_coefficients_df %>%
+  mutate(p_value_bh = p.adjust(p_value, method = "BH"))
+
+season_coefficients_df <- season_coefficients_df %>%
+  mutate(p_value_bh = p.adjust(p_value, method = "BH"))
+
+opening_season_coefficients_df <- opening_season_coefficients_df %>%
+  mutate(p_value_bh = p.adjust(p_value, method = "BH"))
+```
+
+```{r}
+all_coefficients_df <- bind_rows(opening_coefficients_df, season_coefficients_df, opening_season_coefficients_df) %>% 
+  arrange(team, phase) %>% 
+  filter(term == "norm_perform")
+
+season_coefficients_df <- season_coefficients_df %>%
+  mutate(
+    conf.low90 = estimate - 1.645 * std_error,
+    conf.high90 = estimate + 1.645 * std_error,
+    conf.low95 = estimate - 1.96 * std_error,
+    conf.high95 = estimate + 1.96 * std_error,
+    sig_color90 = case_when(
+      p_value <= 0.1 & estimate > 0 ~ "Bandwagon",
+      p_value <= 0.1 & estimate < 0 ~ "Anti-Bandwagon",
+      TRUE ~ "Non-Bandwagon"
+    ),
+    sig_color95 = case_when(
+      p_value <= 0.05 & estimate > 0 ~ "Bandwagon",
+      p_value <= 0.05 & estimate < 0 ~ "Anti-Bandwagon",
+      TRUE ~ "Non-Bandwagon"
+    ),
+    sig_color95_bh = case_when(
+      p_value_bh <= 0.05 & estimate > 0 ~ "Bandwagon",
+      p_value_bh <= 0.05 & estimate < 0 ~ "Anti-Bandwagon",
+      TRUE ~ "Non-Bandwagon"
+    )
+  )
+
+opening_coefficients_df <- opening_coefficients_df %>%
+  mutate(
+    conf.low90 = estimate - 1.645 * std_error,
+    conf.high90 = estimate + 1.645 * std_error,
+    conf.low95 = estimate - 1.96 * std_error,
+    conf.high95 = estimate + 1.96 * std_error,
+    sig_color90 = case_when(
+      p_value <= 0.1 & estimate > 0 ~ "Bandwagon",
+      p_value <= 0.1 & estimate < 0 ~ "Anti-Bandwagon",
+      TRUE ~ "Non-Bandwagon"
+    ),
+    sig_color95 = case_when(
+      p_value <= 0.05 & estimate > 0 ~ "Bandwagon",
+      p_value <= 0.05 & estimate < 0 ~ "Anti-Bandwagon",
+      TRUE ~ "Non-Bandwagon"
+    ),
+    sig_color95_bh = case_when(
+      p_value_bh <= 0.05 & estimate > 0 ~ "Bandwagon",
+      p_value_bh <= 0.05 & estimate < 0 ~ "Anti-Bandwagon",
+      TRUE ~ "Non-Bandwagon"
+    )
+  )
+```
+
+```{r, warning=FALSE, message=FALSE}
+norm_df %>%
+  filter(team == "Los Angeles Dodgers") %>%
+  filter(phase == "Opening" | phase == "Season") %>% 
+  ggplot(aes(x = norm_perform, y = resid_final_avg)) +
+  geom_point(aes(color = phase), size = 3) +  # Scatter plot with color by phase
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  scale_color_manual(values = c("Opening" = "blue", "Season" = "green", "Playoffs" = "red")) +
+  labs(title = "Los Angeles Dodgers (Opening and Season)",
+       x = "Normalized Performance",
+       y = "Residuals",
+       color = "Phase") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 0.5)
+```
+
+```{r, warning=FALSE, message=FALSE}
+norm_df %>%
+  filter(team == "Los Angeles Dodgers") %>%
+  filter(phase == "Opening") %>% 
+  ggplot(aes(x = norm_perform, y = resid_final_avg)) +
+  geom_point(aes(color = phase), size = 3) +  # Scatter plot with color by phase
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  scale_color_manual(values = c("Opening" = "blue", "Season" = "green", "Playoffs" = "red")) +
+  labs(title = "Los Angeles Dodgers (Opening)",
+       x = "Normalized Performance",
+       y = "Residuals") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 0.5)
+```
+
+```{r, warning=FALSE, message=FALSE}
+norm_df %>%
+  filter(team == "Los Angeles Dodgers") %>%
+  filter(phase == "Season") %>% 
+  ggplot(aes(x = norm_perform, y = resid_final_avg)) +
+  geom_point(aes(color = phase), size = 3) +  # Scatter plot with color by phase
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  scale_color_manual(values = c("Opening" = "blue", "Season" = "green", "Playoffs" = "red")) +
+  labs(title = "Los Angeles Dodgers (Season)",
+       x = "Normalized Performance",
+       y = "Residuals") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 0.5)
+```
+
+```{r}
+season_coefficients_df <- season_coefficients_df %>%
+  arrange(conf.low95) %>%
+  mutate(team = factor(team, levels = team))
+
+# Plot
+ggplot(season_coefficients_df, aes(x = estimate, y = team, color = sig_color95_bh)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low95, xmax = conf.high95), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_color_manual(
+    values = c(
+      "Bandwagon" = "red",
+      "Anti-Bandwagon" = "blue",
+      "Non-Bandwagon" = "green"
+    )
+  ) +
+  labs(
+    x = "Bandwagon Measure",
+    y = "Team",
+    color = "Type (Benjamini-Hochberg Adj)",
+    title = "Reg Season Bandwagon Measures (95% Conf Ints)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+opening_coefficients_df <- opening_coefficients_df %>%
+  arrange(estimate) %>%
+  mutate(team = factor(team, levels = team))
+
+# Plot
+ggplot(opening_coefficients_df, aes(x = estimate, y = team, color = sig_color95_bh)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low95, xmax = conf.high95), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_color_manual(
+    values = c(
+      "Bandwagon" = "red",
+      "Anti-Bandwagon" = "blue",
+      "Non-Bandwagon" = "green"
+    )
+  ) +
+  labs(
+    x = "Bandwagon Measure",
+    y = "Team",
+    color = "Type (Benjamini-Hochberg Adj)",
+    title = "Opening Bandwagon Measures (95% Conf Ints)"
+  ) +
+  theme_minimal()
+```
